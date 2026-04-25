@@ -443,6 +443,242 @@ export function BuyButton() {
 </script>
 ```
 
+### F) On page load — fire an event when the page becomes available
+
+The boot script already fires `PageView` automatically. Use this pattern
+when you want a **different** event on certain pages — `ViewContent` on a
+product page, `Lead` on a thank-you-for-subscribing page, a custom event
+on a long-form article, etc.
+
+**Plain HTML / single page:**
+
+```html
+<script>
+  import { trackEvent } from "zara-tracking";
+
+  document.addEventListener("DOMContentLoaded", () => {
+    trackEvent("ViewContent", {
+      content_name: "spring-collection-2026",
+      content_type: "product_group",
+      value: 0,
+      currency: "BRL",
+    });
+  });
+</script>
+```
+
+> **Why `DOMContentLoaded` and not the top-level script body?**
+> The boot script in `<head>` finishes synchronously, so `__ZARAZ_TRACK__`
+> exists immediately. But for SSR/hydration timing on Next or for
+> Astro view transitions, deferring to `DOMContentLoaded` (or
+> `astro:page-load`) keeps timing consistent across reloads and SPA
+> navigations.
+
+**Astro page (works with `<ClientRouter />`):**
+
+`src/pages/produto.astro`:
+
+```astro
+---
+const productId = "sku-7";
+const productName = "Curso completo";
+---
+<h1>{productName}</h1>
+
+<script define:vars={{ productId, productName }}>
+  import { trackEvent } from "zara-tracking";
+
+  document.addEventListener("astro:page-load", () => {
+    if (window.location.pathname.replace(/\/$/, "") !== "/produto") return;
+    trackEvent("ViewContent", {
+      content_ids: [productId],
+      content_name: productName,
+      content_type: "product",
+    });
+  });
+</script>
+```
+
+> **Path guard.** The `<script>` is bundled once and survives view
+> transitions, so the listener fires on every route change. The `if
+> (pathname !== ...)` check makes sure the event only fires on the
+> intended route.
+
+> `define:vars` lets you pass server-side computed values into the
+> client `<script>` block. Without it the inline script can’t see Astro
+> frontmatter variables.
+
+**Next.js client component:**
+
+```tsx
+"use client";
+import { useEffect } from "react";
+import { trackEvent } from "zara-tracking";
+
+export function ProductView({ id, name }: { id: string; name: string }) {
+  useEffect(() => {
+    trackEvent("ViewContent", {
+      content_ids: [id],
+      content_name: name,
+      content_type: "product",
+    });
+    // Empty deps → fires once on mount = once per route mount.
+  }, [id, name]);
+
+  return null;
+}
+```
+
+> Drop `<ProductView id="sku-7" name="Curso" />` into the page server
+> component. The `useEffect` runs after hydration so `__ZARAZ_TRACK__`
+> is guaranteed installed.
+
+**Next.js page-route change (App Router):**
+
+If you want a fresh event on every virtual route change inside a SPA:
+
+```tsx
+"use client";
+import { useEffect } from "react";
+import { usePathname } from "next/navigation";
+import { trackEvent } from "zara-tracking";
+
+export function RouteTracker() {
+  const pathname = usePathname();
+  useEffect(() => {
+    if (!window.__META_FIRST_PAGEVIEW_DONE__) return; // boot script handled it
+    trackEvent("PageView");
+  }, [pathname]);
+  return null;
+}
+```
+
+Mount once in `app/layout.tsx` next to `<MetaPixel />`.
+
+### G) On scroll depth (engagement signal)
+
+```html
+<script>
+  import { trackEvent } from "zara-tracking";
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const fired = new Set<number>();
+    const thresholds = [50, 75, 90]; // percent
+
+    const onScroll = () => {
+      const h = document.documentElement;
+      const pct = Math.round(
+        ((h.scrollTop + h.clientHeight) / h.scrollHeight) * 100,
+      );
+      for (const t of thresholds) {
+        if (pct >= t && !fired.has(t)) {
+          fired.add(t);
+          trackEvent("ScrollDepth", { content_name: `${t}pct` });
+        }
+      }
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+  });
+</script>
+```
+
+### H) On element visible (IntersectionObserver)
+
+Fire when a specific section enters the viewport. Lighter than scroll
+listeners and more semantic.
+
+```html
+<section id="pricing">…</section>
+
+<script>
+  import { trackEvent } from "zara-tracking";
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const target = document.getElementById("pricing");
+    if (!target) return;
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            trackEvent("ViewContent", { content_name: "pricing-section" });
+            io.disconnect(); // fire once
+          }
+        }
+      },
+      { threshold: 0.5 }, // 50% of section visible
+    );
+    io.observe(target);
+  });
+</script>
+```
+
+### I) On dwell timer (intent signal)
+
+Fire after the visitor has stayed on the page for N seconds — useful for
+content engagement or warm-lead scoring.
+
+```html
+<script>
+  import { trackEvent } from "zara-tracking";
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const timer = setTimeout(() => {
+      trackEvent("EngagedDwell", { content_name: "30s" });
+    }, 30_000);
+
+    // Cancel if visitor leaves before threshold (don't pollute the funnel).
+    window.addEventListener("beforeunload", () => clearTimeout(timer), {
+      once: true,
+    });
+  });
+</script>
+```
+
+### J) On video play / completion
+
+```html
+<video id="promo" src="/promo.mp4" controls></video>
+
+<script>
+  import { trackEvent } from "zara-tracking";
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const v = document.getElementById("promo") as HTMLVideoElement | null;
+    if (!v) return;
+
+    let played = false;
+    let completed = false;
+
+    v.addEventListener("play", () => {
+      if (played) return;
+      played = true;
+      trackEvent("VideoPlay", { content_name: "promo" });
+    });
+
+    v.addEventListener("ended", () => {
+      if (completed) return;
+      completed = true;
+      trackEvent("VideoComplete", { content_name: "promo" });
+    });
+  });
+</script>
+```
+
+### Recipe summary
+
+| Trigger | When to use | Recipe |
+|---|---|---|
+| `click` | Buy buttons, CTAs, nav clicks | A, C, D |
+| `submit` | Lead forms, checkout | B |
+| `DOMContentLoaded` / `astro:page-load` | Page-bound conversion (ViewContent on product page, Purchase on thank-you) | E, F |
+| `usePathname` change | SPA virtual route PageView | F (Next) |
+| `scroll` | Engagement / scroll depth | G |
+| `IntersectionObserver` | Section visibility | H |
+| `setTimeout` | Dwell / intent | I |
+| `play`/`ended` on `<video>` | Video engagement | J |
+
 ---
 
 ## 9. API reference
