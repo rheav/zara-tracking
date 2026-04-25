@@ -1,0 +1,37 @@
+---
+/* ==========================================================================
+   <MetaPixel /> — Astro component
+   Mount in layout <head>.
+
+   Usage:
+     ---
+     import MetaPixel from "zara-tracking/astro/MetaPixel.astro";
+     import { META_CONFIG } from "../config/tracking";
+     ---
+     <head>
+       <MetaPixel pixelIds={META_CONFIG.pixelIds} debug={META_CONFIG.debug} />
+     </head>
+   ========================================================================== */
+
+import { buildPixelInitScript } from "zara-tracking";
+
+interface Props {
+  pixelIds: string[];
+  debug?: boolean;
+}
+
+const { pixelIds, debug = false } = Astro.props;
+const hasPixels = Array.isArray(pixelIds) && pixelIds.length > 0;
+
+const scriptBody = hasPixels ? buildPixelInitScript(pixelIds, debug) : "";
+
+const noscriptHtml = pixelIds
+  .map(
+    (id) =>
+      `<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${id}&ev=PageView&noscript=1" alt="" />`,
+  )
+  .join("");
+---
+
+{hasPixels && <script is:inline set:html={scriptBody} />}
+{hasPixels && <noscript set:html={noscriptHtml} />}
