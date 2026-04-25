@@ -27,7 +27,7 @@ Next.js / Astro / Vite project deployed to Cloudflare Pages.
 
 1. [Prerequisites](#1-prerequisites)
 2. [Install](#2-install)
-3. [Environment variables](#3-environment-variables)
+3. [Configuration — `tracking.config.js`](#3-configuration--trackingconfigjs)
 4. [Framework integration](#4-framework-integration)
    - [Next.js (App Router)](#nextjs-app-router)
    - [Astro](#astro)
@@ -77,31 +77,116 @@ No publish to the public npm registry yet.
 
 ---
 
-## 3. Environment variables
+## 3. Configuration — `tracking.config.js`
 
-Two values, used by both sides.
+Pixel IDs, debug flag, defaults, consent gate, and the **declarative event
+registry** all live in one file at the project root. No env vars required.
 
-| Var (Next.js) | Var (Astro / Vite) | Meaning |
-|---|---|---|
-| `NEXT_PUBLIC_META_PIXEL_IDS` | `PUBLIC_META_PIXEL_IDS` | Comma-separated Meta pixel IDs. Empty disables tracking entirely. |
-| `NEXT_PUBLIC_META_DEBUG` | `PUBLIC_META_DEBUG` | `true` to log every event to the console. Default `false`. |
+`tracking.config.js` (or `.ts`) at the **project root**:
 
-Add to `.env` locally and to **Pages → Settings → Environment variables**
-in production. `_PUBLIC_`-prefixed vars are the only ones bundled to the
-browser by the respective frameworks.
+```js
+import { defineTrackingConfig } from "zara-tracking/config";
 
-`.env` (example):
+export default defineTrackingConfig({
+  pixelIds: ["1234567890"],
+  debug: false,
 
+  // Master kill-switch. Flip to false in staging branches.
+  enabled: true,
+
+  // GDPR / consent gate. Polled before every fire. Default: () => true.
+  consent: () => true,
+
+  // Merged into every event payload.
+  defaults: { currency: "BRL" },
+
+  // Re-fire PageView on SPA route change (handles first-load dedup).
+  spaPageViews: true,
+
+  // Auto-bind any element with [data-track="EventName"] in markup.
+  autoBindDataAttrs: true,
+
+  // Declarative event registry — replaces hand-written addEventListener.
+  events: {
+    // Route-bound (fire when URL matches)
+    thankYou: {
+      on: "route", path: "/thank-you", event: "Purchase",
+      data: ({ query }) => ({
+        value: Number(query.v ?? 47),
+        content_ids: [query.sku].filter(Boolean),
+      }),
+    },
+
+    // Element-bound (delegated, survives SPA nav)
+    buyCta:   { on: "click",  selector: "#cta-buy",  event: "InitiateCheckout", data: { value: 47 } },
+    leadForm: { on: "submit", selector: "form#lead", event: "Lead",
+                data: ({ form }) => ({ content_name: form.get("plan") }) },
+
+    // Engagement
+    pricing:  { on: "visible", selector: "#pricing", threshold: 0.5,
+                event: "ViewContent", data: { content_name: "pricing-section" } },
+    scroll75: { on: "scroll", percent: 75, event: "ScrollDepth", data: { content_name: "75pct" } },
+    dwell30:  { on: "dwell",  seconds: 30, event: "EngagedDwell" },
+    promoEnd: { on: "video",  selector: "#promo", phase: "ended", event: "VideoComplete" },
+  },
+});
 ```
-NEXT_PUBLIC_META_PIXEL_IDS=1234567890
-NEXT_PUBLIC_META_DEBUG=false
+
+### Event-definition reference
+
+Every entry in `events` is keyed by a label of your choice (used for the
+`once` guard). Each value is one of these shapes:
+
+| `on` | required keys | optional keys | when it fires |
+|---|---|---|---|
+| `"route"` | `path` (string or RegExp), `event`, `data?` | `once?` | on page load + SPA route change when `location.pathname` matches `path` |
+| `"click"` | `selector`, `event`, `data?` | `once?` | when a click bubbles up from an element matching `selector` |
+| `"submit"` | `selector`, `event`, `data?` | `once?` | when a `<form>` matching `selector` is submitted (`form` available in ctx) |
+| `"visible"` | `selector`, `event`, `data?` | `threshold?` (0–1, default 0.5), `once?` | when the element enters the viewport (IntersectionObserver) |
+| `"scroll"` | `percent` (0–100), `event`, `data?` | `once?` | when the page is scrolled past `percent` |
+| `"dwell"` | `seconds`, `event`, `data?` | `once?` | after `seconds` of time on the page |
+| `"video"` | `selector`, `phase` (`"play"` \| `"ended"`), `event`, `data?` | `once?` | on `play` or `ended` of a `<video>` matching `selector` |
+
+`path` matching:
+- `"/produto"` — exact match (and `/produto/`)
+- `"/blog/"` — prefix match (any URL starting with `/blog/`)
+- `/^\/p\/\d+$/` — RegExp
+
+`data` accepts an object **or** a function `(ctx) => EventData`. Context
+fields: `query` (URL search params object), `pathname`, `el` (the element
+that fired), `form` (FormData on submit), `event` (the DOM event).
+
+### `data-track` HTML attribute (designer-friendly)
+
+With `autoBindDataAttrs: true`, any element with `data-track="EventName"`
+is auto-wired. No JS, no config row needed:
+
+```html
+<button
+  data-track="InitiateCheckout"
+  data-track-value="47"
+  data-track-currency="BRL"
+  data-track-content-name="Buy CTA"
+  data-track-content-ids="sku-1,sku-2"
+  data-track-once="true">
+  Buy
+</button>
 ```
 
-Multi-pixel:
+| Attribute | Purpose |
+|---|---|
+| `data-track` | **Required.** Meta event name. |
+| `data-track-on` | Trigger event. Default `"click"`. (`"submit"`, `"mouseenter"`, etc.) |
+| `data-track-once` | `"true"` to fire only once per session. |
+| `data-track-value` | Parsed as Number. |
+| `data-track-content-ids` | Split on commas → array. |
+| `data-track-*` | Any other key becomes a custom payload field (kebab → camel). |
 
-```
-NEXT_PUBLIC_META_PIXEL_IDS=1234567890,9876543210
-```
+> **CAPI access token** lives in the Cloudflare Zaraz dashboard, never in
+> the repo. See section 6.
+
+> **Legacy:** `buildConfigFromEnv({ pixelIds, debug })` still works if
+> you prefer env vars.
 
 ---
 
@@ -115,25 +200,27 @@ before React hydrates.
 `src/app/layout.tsx` (or `.jsx`):
 
 ```tsx
-import { MetaPixel } from "zara-tracking/react";
-import { buildConfigFromEnv } from "zara-tracking/config";
-
-const meta = buildConfigFromEnv({
-  pixelIds: process.env.NEXT_PUBLIC_META_PIXEL_IDS,
-  debug: process.env.NEXT_PUBLIC_META_DEBUG,
-});
+import { TrackingProvider } from "zara-tracking/react/provider";
+import trackingConfig from "../../tracking.config";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <head>
-        <MetaPixel pixelIds={meta.pixelIds} debug={meta.debug} />
+        <TrackingProvider config={trackingConfig} />
       </head>
       <body>{children}</body>
     </html>
   );
 }
 ```
+
+`<TrackingProvider />` mounts the pixel boot script AND boots the runtime
+(events, defaults, consent, SPA pageviews, data-attr binding). One mount,
+zero per-page boilerplate.
+
+> Want the pixel-only path (no auto-binder)? Import `MetaPixel` from
+> `zara-tracking/react` instead — it just renders the boot script.
 
 The component:
 
@@ -152,26 +239,9 @@ Done. Initial PageView is now firing on both sides.
 
 ### Astro
 
-**a. Wrap env parsing once.**
-
-`src/config/tracking.ts`:
-
-```ts
-import { buildConfigFromEnv } from "zara-tracking/config";
-
-const env = import.meta.env;
-
-export const META_CONFIG = {
-  ...buildConfigFromEnv({
-    pixelIds: env.PUBLIC_META_PIXEL_IDS,
-    debug: env.PUBLIC_META_DEBUG,
-  }),
-  defaultCurrency: "BRL" as const,
-};
-```
-
-**b. Mount `<MetaPixel />` in the layout `<head>`** + add the SPA
-PageView re-fire if you use `<ClientRouter />` view transitions.
+Two pieces: render the pixel script in `<head>` (SSR), then boot the
+runtime in an inline `<script>` block (bundled by Vite, so functions in
+your config survive intact).
 
 `src/layouts/Layout.astro`:
 
@@ -179,33 +249,31 @@ PageView re-fire if you use `<ClientRouter />` view transitions.
 ---
 import { ClientRouter } from "astro:transitions";
 import MetaPixel from "zara-tracking/astro/MetaPixel.astro";
-import { META_CONFIG } from "../config/tracking";
+import trackingConfig from "../../tracking.config";
 ---
 <html lang="en">
   <head>
-    <MetaPixel pixelIds={META_CONFIG.pixelIds} debug={META_CONFIG.debug} />
+    <MetaPixel
+      pixelIds={trackingConfig.pixelIds}
+      debug={trackingConfig.debug}
+    />
     <ClientRouter />
   </head>
   <body><slot /></body>
 </html>
 
 <script>
-  // Re-fire PageView on every Astro view transition (skip first load).
-  import { trackEvent } from "zara-tracking";
-  document.addEventListener("astro:page-load", () => {
-    const w = window as unknown as { __META_FIRST_PAGEVIEW_DONE__?: boolean };
-    if (!w.__META_FIRST_PAGEVIEW_DONE__) {
-      w.__META_FIRST_PAGEVIEW_DONE__ = true;
-      return;
-    }
-    trackEvent("PageView");
-  });
+  import { runTracking } from "zara-tracking/runtime";
+  import config from "../../tracking.config";
+  runTracking(config);
 </script>
+
 ```
 
-Static/MPA Astro (no `<ClientRouter />`)? Drop the bottom `<script>` block.
-The boot script fires PageView once per full page load, which is exactly
-what you want for MPA navigation.
+`runTracking(config)` handles the SPA PageView re-fire automatically when
+`spaPageViews: true` is set in the config — no manual `astro:page-load`
+listener needed. For static/MPA Astro, leave `spaPageViews: false`; each
+full page load fires PageView once via the boot script.
 
 ---
 
@@ -739,11 +807,13 @@ interface EventData {
 
 ## 10. Debugging
 
-Set debug on:
+Set debug on in `tracking.config.js`:
 
-```
-NEXT_PUBLIC_META_DEBUG=true     # Next.js
-PUBLIC_META_DEBUG=true          # Astro / Vite
+```js
+export default defineTrackingConfig({
+  pixelIds: ["1234567890"],
+  debug: true,
+});
 ```
 
 Or at runtime:
@@ -814,7 +884,7 @@ avoid double-firing on first load.
 | **Only Server row in Test Events** | Ad blocker, ITP, or fbevents.js blocked | Test in a clean profile / incognito. Check Network tab for `fbevents.js`. |
 | **Both rows but no Deduplicated badge** | `event_id` field mapping wrong in Zaraz tool | Re-check Step 6 row 2 — must be `{{ client.event_id }}`, not anything else. |
 | **`window.fbq is not defined`** | Boot script not in `<head>` or `<MetaPixel />` returned null | Check the rendered HTML — pixel IDs env var must be non-empty; component is mounted in `<head>`, not `<body>`. |
-| **Events fire in dev but not prod** | Env vars not set on Cloudflare Pages | Pages → Settings → Environment variables → add both `*_META_PIXEL_IDS` and `*_META_DEBUG`. Redeploy. |
+| **Events fire in dev but not prod** | `tracking.config.js` not committed, or import path wrong | The file must be committed to the repo Cloudflare Pages builds from — confirm `git status` is clean and the layout import resolves. |
 | **`external_id` empty on first visit** | Middleware not deployed | Add `functions/_middleware.ts` with `export { onRequest } from "zara-tracking/middleware"`. Redeploy. (Optional but recommended.) |
 | **Match quality stuck around 4–5/10** | Geo fields missing | Confirm middleware is deployed (`window.__GEO__` should be set in DOM source). Confirm Zaraz tool maps `user_data.ct/st/zp/country` to `client.ct/st/zp/country`. |
 | **Cookie not set in Safari** | Middleware skipping path | Check skipPaths — entry HTML routes shouldn’t be in the skip list. |

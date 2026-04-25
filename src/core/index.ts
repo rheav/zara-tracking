@@ -25,6 +25,13 @@ export {
 
 export { initDebug, isDebugEnabled } from "./debug";
 
+export {
+  configureTracking,
+  getRuntimeState,
+  shouldFire,
+  mergeDefaults,
+} from "./runtime-state";
+
 export type {
   TrackingConfig,
   EventTriggerConfig,

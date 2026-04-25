@@ -38,6 +38,10 @@
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js"
     },
+    "./react/provider": {
+      "types": "./dist/react/provider.d.ts",
+      "import": "./dist/react/provider.js"
+    },
     "./middleware": {
       "types": "./dist/middleware/index.d.ts",
       "import": "./dist/middleware/index.js"
@@ -45,6 +49,10 @@
     "./config": {
       "types": "./dist/config/index.d.ts",
       "import": "./dist/config/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js"
     },
     "./astro/MetaPixel.astro": "./astro/MetaPixel.astro",
     "./package.json": "./package.json"

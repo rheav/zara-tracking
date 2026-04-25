@@ -13,6 +13,7 @@ import {
   getOrCreateExternalId,
 } from "./utils";
 import { isDebugEnabled, debugEvent } from "./debug";
+import { shouldFire, mergeDefaults } from "./runtime-state";
 import type { EventData, ZarazPayload } from "./types";
 
 declare global {
@@ -53,11 +54,13 @@ function getGeoData(): Pick<ZarazPayload, "ct" | "st" | "zp" | "country"> {
 }
 
 export function trackEvent(eventName: string, data?: EventData): void {
+  if (!shouldFire()) return;
+  const merged = mergeDefaults(data);
   const eventId = generateEventId(eventName);
 
   if (typeof window !== "undefined" && typeof window.fbq === "function") {
-    window.fbq("track", eventName, data || {}, { eventID: eventId });
-    if (isDebugEnabled()) debugEvent(eventName, "browser", eventId, data);
+    window.fbq("track", eventName, merged, { eventID: eventId });
+    if (isDebugEnabled()) debugEvent(eventName, "browser", eventId, merged);
   }
 
   const payload: ZarazPayload = {
@@ -66,7 +69,7 @@ export function trackEvent(eventName: string, data?: EventData): void {
     fbc: getFbc() || "",
     fbp: getFbp() || "",
     ...getGeoData(),
-    ...(data || {}),
+    ...merged,
   };
 
   if (typeof window === "undefined") return;
