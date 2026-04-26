@@ -77,6 +77,18 @@ export function runTracking(config: RuntimeConfig): RuntimeHandle {
   }
   window.__ZARA_RUNTIME_ACTIVE__ = true;
 
+  if (
+    (!config.pixelIds || config.pixelIds.length === 0) &&
+    !window.__ZARA_EMPTY_WARNED__
+  ) {
+    window.__ZARA_EMPTY_WARNED__ = true;
+    console.warn(
+      "[zara-tracking] runTracking() called with no pixelIds — events will " +
+        "still fire to Zaraz but the browser pixel side will be silent. " +
+        "Check tracking.config.{js,ts}.",
+    );
+  }
+
   // 1. Push runtime state (defaults / enabled / consent) into module store
   configureTracking({
     defaults: config.defaults || {},
@@ -93,8 +105,11 @@ export function runTracking(config: RuntimeConfig): RuntimeHandle {
     bindClick(grouped.click),
     bindSubmit(grouped.submit),
   ];
-  if (config.autoBindDataAttrs) {
-    persistentCleanups.push(bindDataAttrs());
+  // Default true — disable by setting `autoBindDataAttrs: false`. The
+  // declarative `data-track="EventName"` markup is the lib's headline pattern;
+  // forcing every consumer to opt in was unnecessary friction.
+  if (config.autoBindDataAttrs !== false) {
+    persistentCleanups.push(bindDataAttrs(config.dataAttrTriggers));
   }
 
   // 3. Per-route bindings — rebound on every route change
@@ -118,9 +133,12 @@ export function runTracking(config: RuntimeConfig): RuntimeHandle {
   }
 
   // 4. SPA route-change detection
+  // `spaPageViews` defaults true — every modern app is an SPA at this point.
+  // Disable with explicit `spaPageViews: false` for static MPAs.
+  const spaPageViews = config.spaPageViews !== false;
   const onRouteChange = () => {
     bindPerRoute();
-    if (config.spaPageViews) {
+    if (spaPageViews) {
       // first-load PageView fired by inline pixel script; only re-fire after
       if (window.__META_FIRST_PAGEVIEW_DONE__) trackEvent("PageView");
     }

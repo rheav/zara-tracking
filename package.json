@@ -1,6 +1,6 @@
 {
   "name": "zara-tracking",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "description": "Plug-and-play Meta Pixel + Cloudflare Zaraz Conversions API tracking. Browser pixel + server-side CAPI deduplicated via shared event_id. Drop-in for Next.js, Astro, or any web framework.",
   "type": "module",
   "license": "MIT",
@@ -27,6 +27,7 @@
     "astro",
     "src",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "exports": {
@@ -42,6 +43,10 @@
       "types": "./dist/react/provider.d.ts",
       "import": "./dist/react/provider.js"
     },
+    "./react/quiz": {
+      "types": "./dist/react/quiz/index.d.ts",
+      "import": "./dist/react/quiz/index.js"
+    },
     "./middleware": {
       "types": "./dist/middleware/index.d.ts",
       "import": "./dist/middleware/index.js"
@@ -54,7 +59,16 @@
       "types": "./dist/runtime/index.d.ts",
       "import": "./dist/runtime/index.js"
     },
+    "./astro-integration": {
+      "types": "./dist/astro-integration/index.d.ts",
+      "import": "./dist/astro-integration/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    },
     "./astro/MetaPixel.astro": "./astro/MetaPixel.astro",
+    "./astro/TrackingProvider.astro": "./astro/TrackingProvider.astro",
     "./package.json": "./package.json"
   },
   "scripts": {

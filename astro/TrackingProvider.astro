@@ -1,0 +1,84 @@
+---
+/* ==========================================================================
+   <TrackingProvider /> — Astro component (one-line plug-and-play)
+
+   Mounts the Meta Pixel boot script AND boots the runtime auto-binder
+   (events, defaults, consent, SPA pageviews, data-attr binding) in a
+   single component. Mirrors the React provider's API.
+
+   Usage (mount in layout <head>):
+     ---
+     import TrackingProvider from "zara-tracking/astro/TrackingProvider.astro";
+     import config from "../../tracking.config";
+     ---
+     <TrackingProvider config={config} />
+
+   ── Limitation ───────────────────────────────────────────────────────────
+   Astro `<script>` blocks inside this component receive the config via
+   JSON serialization, so any **function values** in your config (e.g.
+   `consent: () => true` or `events.X.data: (ctx) => ({...})`) cannot be
+   serialized and will cause this component to throw at build time.
+
+   If your config uses function resolvers, switch to the explicit pattern:
+
+     ---
+     import MetaPixel from "zara-tracking/astro/MetaPixel.astro";
+     import config from "../../tracking.config";
+     ---
+     <MetaPixel config={config} />
+     <script>
+       import { runTracking } from "zara-tracking/runtime";
+       import config from "../../tracking.config";
+       runTracking(config);
+     </script>
+
+   That pattern bundles the config (including functions) through Vite at
+   the user-side call site, where relative paths resolve correctly.
+   ========================================================================== */
+
+import MetaPixel from "./MetaPixel.astro";
+import type { RuntimeConfig } from "zara-tracking";
+
+interface Props {
+  config: RuntimeConfig;
+}
+
+const { config } = Astro.props;
+
+/** Detect function values anywhere in the config (deep). */
+function findFunctionPath(obj: unknown, path = ""): string | null {
+  if (typeof obj === "function") return path || "(root)";
+  if (obj === null || typeof obj !== "object") return null;
+  for (const [k, v] of Object.entries(obj)) {
+    const next = path ? `${path}.${k}` : k;
+    const hit = findFunctionPath(v, next);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+const fnPath = findFunctionPath(config);
+if (fnPath) {
+  throw new Error(
+    `[zara-tracking] <TrackingProvider> received a config containing a ` +
+      `function at \`${fnPath}\`. Function values cannot be inlined into ` +
+      `Astro <script> blocks. Use the manual <MetaPixel> + <script> pattern ` +
+      `instead — see docs in TrackingProvider.astro.`,
+  );
+}
+
+// JSON-stringify once, embed as a literal in the script body.
+const configJson = JSON.stringify(config);
+---
+
+<MetaPixel config={config} />
+<script is:inline define:vars={{ __ZARA_CONFIG__: configJson }}>
+  // Stash the config on window so the bundled runtime module can pick it up.
+  window.__ZARA_CONFIG__ = JSON.parse(__ZARA_CONFIG__);
+</script>
+<script>
+  import { runTracking } from "zara-tracking/runtime";
+  // Window-stashed config is set synchronously by the inline script above.
+  const cfg = (window as any).__ZARA_CONFIG__;
+  if (cfg) runTracking(cfg);
+</script>

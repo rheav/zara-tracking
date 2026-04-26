@@ -39,3 +39,13 @@ export function debugPixelInit(pixelIds: string[], externalId: string): void {
     STYLE_TXT,
   );
 }
+
+/**
+ * Log when an event was NOT fired and why. One-line reason makes consent /
+ * kill-switch / resolver-opt-out failures visible in the console without
+ * needing to step through dist source.
+ */
+export function debugSkip(name: string, reason: string): void {
+  if (!enabled) return;
+  console.log(`%c META %c skipped ${name} — ${reason}`, STYLE_META, STYLE_TXT);
+}

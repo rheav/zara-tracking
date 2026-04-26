@@ -12,8 +12,8 @@ import {
   getFbp,
   getOrCreateExternalId,
 } from "./utils";
-import { isDebugEnabled, debugEvent } from "./debug";
-import { shouldFire, mergeDefaults } from "./runtime-state";
+import { isDebugEnabled, debugEvent, debugSkip } from "./debug";
+import { shouldFire, getRuntimeState, mergeDefaults } from "./runtime-state";
 import type { EventData, ZarazPayload } from "./types";
 
 declare global {
@@ -21,16 +21,9 @@ declare global {
     fbq?: (...args: unknown[]) => void;
     zaraz?: {
       track: (name: string, payload?: Record<string, unknown>) => void;
-      set?: (
-        key: string,
-        value: unknown,
-        opts?: { scope: string },
-      ) => void;
+      set?: (key: string, value: unknown, opts?: { scope: string }) => void;
     };
-    __ZARAZ_TRACK__?: (
-      name: string,
-      payload: Record<string, unknown>,
-    ) => void;
+    __ZARAZ_TRACK__?: (name: string, payload: Record<string, unknown>) => void;
     __GEO__?: {
       ct?: string;
       st?: string;
@@ -38,12 +31,13 @@ declare global {
       country?: string;
     };
     __EXTERNAL_ID__?: string;
+    /** Internal one-shot guard: true once we've warned about empty pixelIds. */
+    __ZARA_EMPTY_WARNED__?: boolean;
   }
 }
 
 function getGeoData(): Pick<ZarazPayload, "ct" | "st" | "zp" | "country"> {
-  const geo =
-    typeof window !== "undefined" ? window.__GEO__ : undefined;
+  const geo = typeof window !== "undefined" ? window.__GEO__ : undefined;
   const out: Pick<ZarazPayload, "ct" | "st" | "zp" | "country"> = {};
   if (!geo) return out;
   if (geo.ct) out.ct = geo.ct;
@@ -54,7 +48,16 @@ function getGeoData(): Pick<ZarazPayload, "ct" | "st" | "zp" | "country"> {
 }
 
 export function trackEvent(eventName: string, data?: EventData): void {
-  if (!shouldFire()) return;
+  if (!shouldFire()) {
+    if (isDebugEnabled()) {
+      const state = getRuntimeState();
+      const reason = !state.enabled
+        ? "enabled=false"
+        : "consent gate returned false";
+      debugSkip(eventName, reason);
+    }
+    return;
+  }
   const merged = mergeDefaults(data);
   const eventId = generateEventId(eventName);
 

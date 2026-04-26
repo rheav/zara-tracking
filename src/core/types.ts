@@ -100,14 +100,26 @@ export interface RuntimeConfig {
   consent?: () => boolean;
   /** Defaults merged into every event payload. */
   defaults?: EventData;
-  /** Re-fire PageView on SPA route change (with first-load guard). */
+  /**
+   * Re-fire PageView on SPA route change (with first-load guard).
+   * **Default `true`** — disable with explicit `false` for static MPAs.
+   */
   spaPageViews?: boolean;
   /**
    * Auto-bind elements with `data-track="EventName"` attribute.
    * Reads `data-track-value`, `data-track-currency`, `data-track-content-name`,
    * `data-track-content-ids` (CSV), and any `data-track-*` as custom field.
+   * **Default `true`** — disable with explicit `false`.
    */
   autoBindDataAttrs?: boolean;
+  /**
+   * Triggers the `data-track` binder listens to. Defaults to
+   * `["click", "submit"]`. Add `"change"`, `"focus"`, `"mouseenter"`, etc.
+   * here to opt elements like `<input data-track-on="change">` in.
+   * Listeners are document-delegated, so adding more triggers has negligible
+   * cost and works for elements added after mount.
+   */
+  dataAttrTriggers?: string[];
   /** Declarative event registry. Key is a label for your reference. */
   events?: Record<string, EventDefinition>;
   /** Free-form extras (e.g. defaultCurrency). */

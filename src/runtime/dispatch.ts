@@ -4,6 +4,7 @@
    ========================================================================== */
 
 import { trackEvent } from "../core/tracker";
+import { debugSkip, isDebugEnabled } from "../core/debug";
 import type { DataResolver, EventData, TriggerContext } from "../core/types";
 
 const fired = new Set<string>();
@@ -19,12 +20,19 @@ export interface DispatchInput {
 
 export function dispatch(input: DispatchInput): void {
   const key = input.key || input.eventName;
-  if (input.once && fired.has(key)) return;
+  if (input.once && fired.has(key)) {
+    if (isDebugEnabled()) debugSkip(input.eventName, `once-guard (key=${key})`);
+    return;
+  }
 
   let payload: EventData | undefined;
   if (typeof input.data === "function") {
     const out = input.data(input.ctx);
-    if (out === null || out === undefined) return; // resolver opted out
+    if (out === null || out === undefined) {
+      if (isDebugEnabled())
+        debugSkip(input.eventName, "data resolver returned null");
+      return;
+    }
     payload = out;
   } else {
     payload = input.data;
@@ -34,7 +42,9 @@ export function dispatch(input: DispatchInput): void {
   if (input.once) fired.add(key);
 }
 
-export function buildContext(extra: Partial<TriggerContext> = {}): TriggerContext {
+export function buildContext(
+  extra: Partial<TriggerContext> = {},
+): TriggerContext {
   const query: Record<string, string> = {};
   if (typeof window !== "undefined") {
     new URLSearchParams(window.location.search).forEach((v, k) => {
@@ -43,8 +53,7 @@ export function buildContext(extra: Partial<TriggerContext> = {}): TriggerContex
   }
   return {
     query,
-    pathname:
-      typeof window !== "undefined" ? window.location.pathname : "",
+    pathname: typeof window !== "undefined" ? window.location.pathname : "",
     ...extra,
   };
 }

@@ -5,9 +5,12 @@ export default defineConfig([
     entry: {
       "core/index": "src/core/index.ts",
       "react/index": "src/react/index.ts",
+      "react/quiz/index": "src/react/quiz/index.ts",
       "middleware/index": "src/middleware/index.ts",
       "config/index": "src/config/index.ts",
       "runtime/index": "src/runtime/index.ts",
+      "astro-integration/index": "src/astro-integration/index.ts",
+      "testing/index": "src/testing/index.ts",
     },
     format: ["esm"],
     dts: true,

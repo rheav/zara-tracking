@@ -1,27 +1,45 @@
 ---
 /* ==========================================================================
    <MetaPixel /> — Astro component
-   Mount in layout <head>.
+   Renders the Meta Pixel boot script + <noscript> fallback img(s).
+   Mount in layout <head>. Pixel-only — DOES NOT boot the runtime
+   (auto-binder, declarative events). For full plug-and-play, use
+   <TrackingProvider /> instead.
 
-   Usage:
+   Recommended usage (pass the whole config):
      ---
      import MetaPixel from "zara-tracking/astro/MetaPixel.astro";
-     import { META_CONFIG } from "../config/tracking";
+     import config from "../../tracking.config";
      ---
-     <head>
-       <MetaPixel pixelIds={META_CONFIG.pixelIds} debug={META_CONFIG.debug} />
-     </head>
+     <MetaPixel config={config} />
+
+   Legacy form (still supported):
+     <MetaPixel pixelIds={config.pixelIds} debug={config.debug} />
    ========================================================================== */
 
 import { buildPixelInitScript } from "zara-tracking";
+import type { RuntimeConfig } from "zara-tracking";
 
 interface Props {
-  pixelIds: string[];
+  /** Full RuntimeConfig — the one returned by defineTrackingConfig. */
+  config?: RuntimeConfig;
+  /** Legacy: pass pixelIds directly. Ignored when `config` is set. */
+  pixelIds?: string[];
+  /** Legacy: enable verbose console logging. Ignored when `config` is set. */
   debug?: boolean;
 }
 
-const { pixelIds, debug = false } = Astro.props;
+const props = Astro.props;
+const pixelIds = props.config?.pixelIds ?? props.pixelIds ?? [];
+const debug = props.config?.debug ?? props.debug ?? false;
 const hasPixels = Array.isArray(pixelIds) && pixelIds.length > 0;
+
+if (!hasPixels) {
+  console.warn(
+    "[zara-tracking] <MetaPixel> mounted with no pixelIds — nothing will fire. " +
+      "Check tracking.config.{js,ts}.",
+  );
+}
 
 const scriptBody = hasPixels ? buildPixelInitScript(pixelIds, debug) : "";
 
