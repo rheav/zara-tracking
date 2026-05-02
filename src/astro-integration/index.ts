@@ -53,6 +53,8 @@ interface AstroConfigSetupCtx {
     content: string,
   ) => void;
   logger: { info: (msg: string) => void; warn: (msg: string) => void };
+  /** Astro passes `config.root` as a URL pointing to the project root. */
+  config: { root: URL };
 }
 
 export interface ZaraTrackingIntegrationOptions {
@@ -84,20 +86,42 @@ function buildInjectedScript(configSpec: string): string {
   ].join("\n");
 }
 
+/**
+ * Resolve the user's config spec to a stable specifier the injected script
+ * can import.
+ *
+ * Why this exists: Astro injects our script into a virtual module
+ * (`astro:scripts/page.js`). Relative paths like `./tracking.config` resolve
+ * against that virtual module's location, which doesn't exist on disk — Vite
+ * fails the build with "Could not resolve". For relative specs we rewrite
+ * to an absolute file path under the project root so resolution is unambiguous
+ * regardless of which module Astro inlines our script into.
+ *
+ * Bare specifiers (e.g. `@/tracking-config`) and absolute paths are passed
+ * through unchanged, so Vite aliases continue to work.
+ */
+function resolveConfigSpec(spec: string, projectRoot: URL): string {
+  if (spec.startsWith("./") || spec.startsWith("../")) {
+    return new URL(spec, projectRoot).pathname;
+  }
+  return spec;
+}
+
 export default function zaraTrackingIntegration(
   options: ZaraTrackingIntegrationOptions = {},
 ): AstroIntegrationShape {
-  const configSpec = options.config ?? "./tracking.config";
+  const userSpec = options.config ?? "./tracking.config";
 
   return {
     name: "zara-tracking",
     hooks: {
-      "astro:config:setup": ({ injectScript, logger }) => {
+      "astro:config:setup": ({ injectScript, logger, config }) => {
+        const resolved = resolveConfigSpec(userSpec, config.root);
         logger.info(
-          `Injecting tracking boot from "${configSpec}". ` +
+          `Injecting tracking boot from "${userSpec}" (resolved: ${resolved}). ` +
             `For manual mounts, remove this integration from astro.config.mjs.`,
         );
-        injectScript("page", buildInjectedScript(configSpec));
+        injectScript("page", buildInjectedScript(resolved));
       },
     },
   };
