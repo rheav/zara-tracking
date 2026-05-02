@@ -1,0 +1,10 @@
+import { defineConfig } from "astro/config";
+
+export default defineConfig({
+  markdown: {
+    shikiConfig: {
+      theme: "github-light",
+      wrap: true,
+    },
+  },
+});
