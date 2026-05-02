@@ -7,9 +7,26 @@
 
 interface CfProperties {
   city?: string;
+  region?: string;
   regionCode?: string;
   postalCode?: string;
   country?: string;
+  continent?: string;
+  timezone?: string;
+  latitude?: string;
+  longitude?: string;
+}
+
+export interface GeoRaw {
+  city: string;
+  region: string;
+  regionCode: string;
+  country: string;
+  postalCode: string;
+  continent: string;
+  timezone: string;
+  latitude: string;
+  longitude: string;
 }
 
 export interface MiddlewareEventContext {
@@ -60,9 +77,16 @@ export function generateExternalId(): string {
 
 export function buildInitScript(
   geo: { ct: string; st: string; zp: string; country: string },
+  geoRaw: GeoRaw,
   externalId: string,
 ): string {
-  return `<script>window.__GEO__=${JSON.stringify(geo)};window.__EXTERNAL_ID__=${JSON.stringify(externalId)};</script>`;
+  return (
+    `<script>` +
+    `window.__GEO__=${JSON.stringify(geo)};` +
+    `window.__GEO_RAW__=${JSON.stringify(geoRaw)};` +
+    `window.__EXTERNAL_ID__=${JSON.stringify(externalId)};` +
+    `</script>`
+  );
 }
 
 export function buildCookieHeader(
@@ -116,6 +140,17 @@ export function createOnRequest(options: MiddlewareOptions = {}) {
       zp: cf.postalCode ? String(cf.postalCode) : "",
       country: cf.country ? String(cf.country).toLowerCase() : "",
     };
+    const geoRaw: GeoRaw = {
+      city: cf.city ? String(cf.city) : "",
+      region: cf.region ? String(cf.region) : "",
+      regionCode: cf.regionCode ? String(cf.regionCode) : "",
+      country: cf.country ? String(cf.country) : "",
+      postalCode: cf.postalCode ? String(cf.postalCode) : "",
+      continent: cf.continent ? String(cf.continent) : "",
+      timezone: cf.timezone ? String(cf.timezone) : "",
+      latitude: cf.latitude ? String(cf.latitude) : "",
+      longitude: cf.longitude ? String(cf.longitude) : "",
+    };
 
     const cookieHeader = context.request.headers.get("Cookie");
     let externalId = readCookie(cookieHeader, cookieName);
@@ -125,7 +160,7 @@ export function createOnRequest(options: MiddlewareOptions = {}) {
       isNew = true;
     }
 
-    const initScript = buildInitScript(geo, externalId);
+    const initScript = buildInitScript(geo, geoRaw, externalId);
     const rewriter = new (globalThis as AnyObj).HTMLRewriter().on("head", {
       element(el: AnyObj) {
         el.prepend(initScript, { html: true });

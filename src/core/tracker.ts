@@ -31,6 +31,23 @@ declare global {
       zp?: string;
       country?: string;
     };
+    /**
+     * Display-friendly geo, untouched from `request.cf` casing/spacing.
+     * Injected by the Cloudflare Pages middleware alongside `__GEO__`.
+     * `__GEO__` is for Meta CAPI (lowercased, stripped); `__GEO_RAW__` is
+     * for UI rendering ("São Paulo", "BR", "11660-000", etc).
+     */
+    __GEO_RAW__?: {
+      city?: string;
+      region?: string;
+      regionCode?: string;
+      country?: string;
+      postalCode?: string;
+      continent?: string;
+      timezone?: string;
+      latitude?: string;
+      longitude?: string;
+    };
     __EXTERNAL_ID__?: string;
     /** Internal one-shot guard: true once we've warned about empty pixelIds. */
     __ZARA_EMPTY_WARNED__?: boolean;
