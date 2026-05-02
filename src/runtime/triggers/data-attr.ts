@@ -125,6 +125,7 @@ export function bindDataAttrs(
         eventName,
         data,
         once,
+        trigger: `data-attr:${trigger}`,
         ctx: buildContext({ el, event: e }),
       });
     };

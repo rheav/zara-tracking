@@ -24,6 +24,7 @@ export function bindScroll(
           eventName: def.event,
           data: def.data,
           once: def.once,
+          trigger: `scroll ${def.percent}%`,
           ctx: buildContext(),
         });
       }

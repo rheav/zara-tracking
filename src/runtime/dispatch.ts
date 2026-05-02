@@ -16,6 +16,11 @@ export interface DispatchInput {
   data?: DataResolver;
   ctx: TriggerContext;
   once?: boolean;
+  /**
+   * Source trigger label for debug logs ("route", "click", "visible", etc).
+   * Each binder sets this so logs can show what fired the event.
+   */
+  trigger?: string;
 }
 
 export function dispatch(input: DispatchInput): void {
@@ -38,7 +43,7 @@ export function dispatch(input: DispatchInput): void {
     payload = input.data;
   }
 
-  trackEvent(input.eventName, payload);
+  trackEvent(input.eventName, payload, { trigger: input.trigger });
   if (input.once) fired.add(key);
 }
 

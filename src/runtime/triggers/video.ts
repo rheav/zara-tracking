@@ -23,6 +23,7 @@ export function bindVideo(
           eventName: def.event,
           data: def.data,
           once: def.once,
+          trigger: `video:${def.phase}`,
           ctx: buildContext({ el, event: e }),
         });
       };

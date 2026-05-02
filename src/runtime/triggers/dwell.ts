@@ -17,6 +17,7 @@ export function bindDwell(
         eventName: def.event,
         data: def.data,
         once: def.once,
+        trigger: `dwell ${def.seconds}s`,
         ctx: buildContext(),
       });
     }, def.seconds * 1000);

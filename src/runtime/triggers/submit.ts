@@ -20,6 +20,7 @@ export function bindSubmit(
         eventName: def.event,
         data: def.data,
         once: def.once,
+        trigger: "submit",
         ctx: buildContext({ el, form, event: e }),
       });
     }

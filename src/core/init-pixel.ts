@@ -22,6 +22,8 @@
    Idempotent: safe to call multiple times (early-exits if fbq is already set).
    ========================================================================== */
 
+import { initDebug, debugFire, debugSession } from "./debug";
+
 // The primary Window augment (fbq, zaraz, __ZARAZ_TRACK__, __EXTERNAL_ID__,
 // __GEO__, etc.) lives in tracker.ts. Only declare the extras unique to the
 // pixel boot sequence here to avoid conflicting declarations.
@@ -169,6 +171,10 @@ export function initPixel(pixelIds: string[], debug = false): void {
 
   window.__META_DEBUG__ = !!debug;
   window.__META_PIXEL_IDS__ = pixelIds;
+  // Enable the debug logger early so the boot PageView + session log are
+  // visible. runTracking() also calls initDebug() but runs *after* this
+  // function, by which point the first PageView has already fired.
+  initDebug(!!debug);
 
   // fbclid → _fbc
   const fbclid = new URLSearchParams(window.location.search).get("fbclid");
@@ -186,13 +192,37 @@ export function initPixel(pixelIds: string[], debug = false): void {
 
   // First deduplicated PageView
   const pvId = genId("PageView");
-  fbq("track", "PageView", {}, { eventID: pvId });
-  window.__ZARAZ_TRACK__!("PageView", {
-    event_id: pvId,
-    external_id: externalId,
-    fbc: getCookie("_fbc") || "",
-    fbp: getCookie("_fbp") || "",
-  });
+  let browserOk = false;
+  try {
+    fbq("track", "PageView", {}, { eventID: pvId });
+    browserOk = true;
+  } catch {
+    /* swallow — debugFire will mark browser as fail */
+  }
+  let zarazOk = false;
+  try {
+    window.__ZARAZ_TRACK__!("PageView", {
+      event_id: pvId,
+      external_id: externalId,
+      fbc: getCookie("_fbc") || "",
+      fbp: getCookie("_fbp") || "",
+    });
+    zarazOk = true;
+  } catch {
+    /* swallow */
+  }
 
   window.__META_FIRST_PAGEVIEW_DONE__ = true;
+
+  if (debug) {
+    debugSession(pixelIds, externalId, getCookie("_fbp") || "");
+    debugFire(
+      "PageView",
+      pvId,
+      browserOk ? "ok" : "fail",
+      zarazOk ? "ok" : "fail",
+      undefined,
+      "boot",
+    );
+  }
 }

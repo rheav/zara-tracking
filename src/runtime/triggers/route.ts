@@ -22,6 +22,7 @@ export function fireRoute(
       eventName: def.event,
       data: def.data,
       once: def.once,
+      trigger: "route",
       ctx: buildContext(),
     });
   }

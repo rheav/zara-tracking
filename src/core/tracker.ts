@@ -12,7 +12,8 @@ import {
   getFbp,
   getOrCreateExternalId,
 } from "./utils";
-import { isDebugEnabled, debugEvent, debugSkip } from "./debug";
+import { isDebugEnabled, debugFire, debugSkip } from "./debug";
+import type { FireStatus } from "./debug";
 import { shouldFire, getRuntimeState, mergeDefaults } from "./runtime-state";
 import type { EventData, ZarazPayload } from "./types";
 
@@ -47,7 +48,20 @@ function getGeoData(): Pick<ZarazPayload, "ct" | "st" | "zp" | "country"> {
   return out;
 }
 
-export function trackEvent(eventName: string, data?: EventData): void {
+export interface TrackEventOptions {
+  /**
+   * Source trigger label for debug logs (e.g. "route", "click", "visible").
+   * Set automatically by the auto-binder; pass manually for imperative
+   * `trackEvent()` calls if you want them attributed in the console.
+   */
+  trigger?: string;
+}
+
+export function trackEvent(
+  eventName: string,
+  data?: EventData,
+  opts?: TrackEventOptions,
+): void {
   if (!shouldFire()) {
     if (isDebugEnabled()) {
       const state = getRuntimeState();
@@ -61,9 +75,14 @@ export function trackEvent(eventName: string, data?: EventData): void {
   const merged = mergeDefaults(data);
   const eventId = generateEventId(eventName);
 
+  let browser: FireStatus = "skipped";
   if (typeof window !== "undefined" && typeof window.fbq === "function") {
-    window.fbq("track", eventName, merged, { eventID: eventId });
-    if (isDebugEnabled()) debugEvent(eventName, "browser", eventId, merged);
+    try {
+      window.fbq("track", eventName, merged, { eventID: eventId });
+      browser = "ok";
+    } catch {
+      browser = "fail";
+    }
   }
 
   const payload: ZarazPayload = {
@@ -75,14 +94,27 @@ export function trackEvent(eventName: string, data?: EventData): void {
     ...merged,
   };
 
-  if (typeof window === "undefined") return;
+  let zaraz: FireStatus = "skipped";
+  if (typeof window !== "undefined") {
+    if (typeof window.__ZARAZ_TRACK__ === "function") {
+      try {
+        window.__ZARAZ_TRACK__(eventName, payload as Record<string, unknown>);
+        zaraz = "ok";
+      } catch {
+        zaraz = "fail";
+      }
+    } else if (window.zaraz && typeof window.zaraz.track === "function") {
+      try {
+        window.zaraz.track(eventName, payload as Record<string, unknown>);
+        zaraz = "ok";
+      } catch {
+        zaraz = "fail";
+      }
+    }
+  }
 
-  if (typeof window.__ZARAZ_TRACK__ === "function") {
-    window.__ZARAZ_TRACK__(eventName, payload as Record<string, unknown>);
-    if (isDebugEnabled()) debugEvent(eventName, "zaraz", eventId, payload);
-  } else if (window.zaraz && typeof window.zaraz.track === "function") {
-    window.zaraz.track(eventName, payload as Record<string, unknown>);
-    if (isDebugEnabled()) debugEvent(eventName, "zaraz", eventId, payload);
+  if (isDebugEnabled()) {
+    debugFire(eventName, eventId, browser, zaraz, merged, opts?.trigger);
   }
 }
 

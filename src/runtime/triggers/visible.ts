@@ -25,6 +25,7 @@ export function bindVisible(
             eventName: def.event,
             data: def.data,
             once: def.once,
+            trigger: "visible",
             ctx: buildContext({ el: entry.target }),
           });
           // visible defaults to once-per-route

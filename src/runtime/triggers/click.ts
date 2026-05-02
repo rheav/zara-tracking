@@ -20,6 +20,7 @@ export function bindClick(
         eventName: def.event,
         data: def.data,
         once: def.once,
+        trigger: "click",
         ctx: buildContext({ el, event: e }),
       });
     }
