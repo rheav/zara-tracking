@@ -29,7 +29,7 @@ Next.js, Astro, or any web framework deployed to Cloudflare Pages.
 2. [Setup (5 steps)](#2-setup-5-steps)
 3. [Adding events](#3-adding-events)
 4. [Config reference](#4-config-reference)
-5. [`data-track` attribute reference](#5-data-track-attribute-reference)
+5. [`data-track-*` attribute reference](#5-data-track--attribute-reference)
 6. [Verify it's working](#6-verify-its-working)
 7. [Add-ons (quiz, testing)](#7-add-ons-quiz-testing)
 8. [Troubleshooting](#8-troubleshooting)
@@ -79,7 +79,7 @@ export default defineTrackingConfig({
 That's it. With this config:
 
 - `PageView` fires automatically on first load and on SPA route changes.
-- Any element with `data-track="EventName"` in your HTML auto-fires.
+- Any element with `data-track-event="EventName"` in your HTML auto-fires.
 - Every event payload includes `currency: "BRL"`.
 
 For all available options see [§4](#4-config-reference).
@@ -178,13 +178,13 @@ list, or when you rotate the access token.
 
 You have **three ways** to fire events. Pick whichever fits the moment.
 
-### A) HTML markup with `data-track` (designer-friendly)
+### A) HTML markup with `data-track-event` (designer-friendly)
 
 No JS, no config row. Drop attributes into the element:
 
 ```html
 <button
-  data-track="InitiateCheckout"
+  data-track-event="InitiateCheckout"
   data-track-value="47"
   data-track-currency="BRL"
   data-track-content-name="Premium Plan"
@@ -194,7 +194,7 @@ No JS, no config row. Drop attributes into the element:
 ```
 
 That fires `InitiateCheckout` with the payload `{ value: 47, currency: "BRL", content_name: "Premium Plan" }` on click. Full attribute list in
-[§5](#5-data-track-attribute-reference).
+[§5](#5-data-track--attribute-reference).
 
 ### B) Declarative `events: {}` block in `tracking.config.ts`
 
@@ -287,7 +287,7 @@ CAPI with a shared `event_id`.
 | `debug`             | `boolean`                  | `false`              | Log every event + skip-reasons to the console. |
 | `consent`           | `() => boolean`            | `() => true`         | Polled before every fire. GDPR / consent gate. |
 | `spaPageViews`      | `boolean`                  | `true`               | Re-fire `PageView` on SPA route change. |
-| `autoBindDataAttrs` | `boolean`                  | `true`               | Auto-bind `data-track="..."` markup. |
+| `autoBindDataAttrs` | `boolean`                  | `true`               | Auto-bind `data-track-event="..."` markup. |
 | `dataAttrTriggers`  | `string[]`                 | `["click","submit"]` | Trigger types the data-track binder listens to. |
 | `events`            | `Record<string, EventDef>` | `{}`                 | Declarative event registry (see below). |
 
@@ -323,13 +323,14 @@ session. Set `once: false` to allow repeat fires.
 
 ---
 
-## 5. `data-track` attribute reference
+## 5. `data-track-*` attribute reference
 
-Any element with `data-track="EventName"` is auto-wired (no JS needed).
+Any element with `data-track-event="EventName"` is auto-wired (no JS
+needed).
 
 | Attribute | Purpose |
 |-----------|---------|
-| `data-track`         | **Required.** Meta event name. |
+| `data-track-event`   | **Required.** Meta event name. |
 | `data-track-on`      | Trigger event. Default `"click"`. (`"submit"`, `"change"`, etc.) |
 | `data-track-once`    | `"true"` to fire only once per session. |
 | `data-track-value`   | Parsed as Number. |
@@ -338,6 +339,11 @@ Any element with `data-track="EventName"` is auto-wired (no JS needed).
 | `data-track-content-ids`   | Split on commas → array. |
 | `data-track-content-name`, `-content-type`, `-content-category`, `-delivery-category`, `-order-id`, `-search-string` | Renamed to Meta-standard snake_case keys. |
 | `data-track-*` (any other) | Becomes a custom payload field (kebab → camel). |
+
+Earlier versions used `data-track="EventName"` (no `-event` suffix).
+That form still works — both attributes are accepted, with
+`data-track-event` taking precedence if both are present. New markup
+should prefer `data-track-event` for readability.
 
 Listeners are document-delegated and bound once at boot, so this works
 for elements rendered **after** the provider mounts (SPA route changes,
@@ -352,8 +358,8 @@ defineTrackingConfig({
 });
 ```
 
-Then `<input data-track="..." data-track-on="change">` will fire on
-change.
+Then `<input data-track-event="..." data-track-on="change">` will fire
+on change.
 
 ---
 
@@ -436,17 +442,32 @@ Works with both Vitest and Jest. No fbq, no network. Also exports
 
 ### My event isn't firing
 
-In `tracking.config.ts`, set `debug: true` and reload. Console will log:
+In `tracking.config.ts`, set `debug: true` and reload. The console
+will print one styled line per event:
 
-- ✅ every fire (`[zara] Lead {...}`)
-- ⚠️ every skip with the reason (`consent gate denied`, `enabled=false`,
-  `once-guard`, `resolver returned undefined`)
+```
+[META] InitiateCheckout (click)  [✓ browser]  [✓ zaraz]  id=…  {value:97,…}
+[META] PageView (boot)           [✓ browser]  [✓ zaraz]  id=…
+[META] Lead skipped              once-guard (key=heroCta)
+```
+
+Each event line covers both legs in one log:
+- `[✓ browser]` / `[✓ zaraz]` — fired ok
+- `[✗ browser]` / `[✗ zaraz]` — code path threw
+- `[— browser]` / `[— zaraz]` — path not available (`fbq` not loaded,
+  Zaraz not configured)
+
+The trigger label in parens (`route`, `click`, `visible`, `scroll N%`,
+`dwell Ns`, `video:phase`, `data-attr:click`, `boot`) tells you which
+rule fired without grepping the config. A one-shot `session` line at
+boot prints the active pixel IDs + truncated `external_id` / `fbp` so
+those identifiers don't repeat on every event.
 
 If you see no log at all, the runtime didn't boot. Check that
 `<TrackingProvider>` is mounted (Next) or `zaraTracking()` is in
 `astro.config.mjs` (Astro).
 
-### `data-track` attributes don't fire
+### `data-track-event` attributes don't fire
 
 Default triggers are `click` + `submit`. For `change`, `focus`, etc., add
 them:

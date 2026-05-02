@@ -18,13 +18,31 @@
 
 let enabled = false;
 
+/* ----------------------------------------------------------------- styling --
+   Pill-styled segments so events stand out from regular console noise.
+   Each segment renders as a small filled badge separated by spaces — the
+   META badge anchors the line, the event name is bold, and the browser /
+   zaraz status pills are colored by outcome (green ok, red fail, gray n/a).
+*/
 const STYLE_BADGE =
-  "background:#1877F2;color:#fff;padding:2px 6px;border-radius:3px;font-weight:600";
-const STYLE_NAME = "color:#1F2937;font-weight:600";
-const STYLE_DIM = "color:#6B7280";
-const STYLE_OK = "color:#059669;font-weight:600";
-const STYLE_FAIL = "color:#DC2626;font-weight:600";
-const STYLE_NA = "color:#9CA3AF";
+  "background:#1877F2;color:#fff;padding:3px 8px;border-radius:4px;" +
+  "font-weight:700;font-size:11px;letter-spacing:0.05em";
+const STYLE_NAME =
+  "color:#0F172A;font-weight:700;font-size:13px;padding:0 4px";
+const STYLE_TRIGGER =
+  "color:#6B7280;font-size:11px;font-style:italic";
+const STYLE_PILL_OK =
+  "background:#10B981;color:#fff;padding:2px 7px;border-radius:4px;" +
+  "font-weight:600;font-size:10px";
+const STYLE_PILL_FAIL =
+  "background:#EF4444;color:#fff;padding:2px 7px;border-radius:4px;" +
+  "font-weight:600;font-size:10px";
+const STYLE_PILL_NA =
+  "background:#9CA3AF;color:#fff;padding:2px 7px;border-radius:4px;" +
+  "font-weight:600;font-size:10px";
+const STYLE_DIM = "color:#9CA3AF;font-size:11px";
+/** Reset sequence — empty string reverts the next text run to default. */
+const STYLE_RESET = "";
 
 /** Identity / session fields hidden from the per-event payload display. */
 const HIDDEN_KEYS = new Set([
@@ -52,8 +70,12 @@ function statusGlyph(s: FireStatus): string {
   return s === "ok" ? "✓" : s === "fail" ? "✗" : "—";
 }
 
-function statusStyle(s: FireStatus): string {
-  return s === "ok" ? STYLE_OK : s === "fail" ? STYLE_FAIL : STYLE_NA;
+function pillStyle(s: FireStatus): string {
+  return s === "ok"
+    ? STYLE_PILL_OK
+    : s === "fail"
+      ? STYLE_PILL_FAIL
+      : STYLE_PILL_NA;
 }
 
 /**
@@ -90,18 +112,27 @@ export function debugFire(
   trigger?: string,
 ): void {
   if (!enabled) return;
-  const triggerStr = trigger ? ` (${trigger})` : "";
   const compact = compactData(data);
+  // 11 %c segments → 11 styles. Spaces between segments stay unstyled
+  // (STYLE_RESET) so the pills don't bleed into each other visually.
   const fmt =
-    `%c META %c ${name}${triggerStr} ` +
-    `%c${statusGlyph(browser)} browser%c  ` +
-    `%c${statusGlyph(zaraz)} zaraz%c  id=${shortId(eventId)}`;
+    `%cMETA%c ` +
+    `%c${name}%c` +
+    `${trigger ? ` %c(${trigger})%c` : `%c%c`} ` +
+    ` %c${statusGlyph(browser)} browser%c ` +
+    ` %c${statusGlyph(zaraz)} zaraz%c ` +
+    ` %cid=${shortId(eventId)}`;
   const styles = [
     STYLE_BADGE,
+    STYLE_RESET,
     STYLE_NAME,
-    statusStyle(browser),
-    STYLE_DIM,
-    statusStyle(zaraz),
+    STYLE_RESET,
+    STYLE_TRIGGER,
+    STYLE_RESET,
+    pillStyle(browser),
+    STYLE_RESET,
+    pillStyle(zaraz),
+    STYLE_RESET,
     STYLE_DIM,
   ];
   if (compact) {
@@ -130,8 +161,10 @@ export function debugSession(
       : externalId;
   const fbpTail = fbp ? fbp.slice(-12) : "(none)";
   console.log(
-    `%c META %c session  pixels=[${ids}]  external_id=${ext}  fbp=${fbpTail}`,
+    `%cMETA%c %csession%c pixels=[${ids}]  external_id=${ext}  fbp=${fbpTail}`,
     STYLE_BADGE,
+    STYLE_RESET,
+    STYLE_TRIGGER,
     STYLE_DIM,
   );
 }
@@ -143,8 +176,12 @@ export function debugSession(
 export function debugSkip(name: string, reason: string): void {
   if (!enabled) return;
   console.log(
-    `%c META %c skipped ${name} — ${reason}`,
+    `%cMETA%c %c${name}%c %cskipped%c ${reason}`,
     STYLE_BADGE,
+    STYLE_RESET,
+    STYLE_NAME,
+    STYLE_RESET,
+    STYLE_PILL_NA,
     STYLE_DIM,
   );
 }

@@ -1,7 +1,7 @@
 /* ==========================================================================
    data-track auto-binder.
 
-   <button data-track="InitiateCheckout"
+   <button data-track-event="InitiateCheckout"
            data-track-value="47"
            data-track-currency="BRL"
            data-track-content-name="Buy CTA"
@@ -9,6 +9,10 @@
            data-track-once="true">
      Buy
    </button>
+
+   `data-track="EventName"` (no `-event` suffix) is also accepted as a legacy
+   alias — earlier versions used that shorter form. New markup should prefer
+   `data-track-event` for readability.
 
    Default triggers are `click` + `submit` — bound unconditionally at boot via
    document-level event delegation. Elements added AFTER mount (SPA route
@@ -53,7 +57,16 @@ const KEY_RENAMES: Record<string, string> = {
 /** Keys whose raw string value should be coerced to Number before dispatch. */
 const NUMERIC_KEYS = new Set(["value", "num_items", "predicted_ltv"]);
 
-const RESERVED = new Set(["track", "trackOn", "trackOnce"]);
+/**
+ * Dataset keys consumed by the binder itself — these must NOT leak into the
+ * event payload.
+ *
+ * `track`      — legacy event-name attribute
+ * `trackEvent` — preferred event-name attribute
+ * `trackOn`    — trigger override
+ * `trackOnce`  — once-flag
+ */
+const RESERVED = new Set(["track", "trackEvent", "trackOn", "trackOnce"]);
 const DEFAULT_TRIGGERS = ["click", "submit"] as const;
 
 function parseDataset(el: HTMLElement): {
@@ -63,7 +76,8 @@ function parseDataset(el: HTMLElement): {
   data: EventData;
 } {
   const ds = el.dataset;
-  const eventName = ds.track || null;
+  // Prefer `data-track-event` (new); fall back to `data-track` (legacy).
+  const eventName = ds.trackEvent || ds.track || null;
   const trigger = ds.trackOn || "click";
   const once = ds.trackOnce === "true";
 
@@ -116,7 +130,11 @@ export function bindDataAttrs(
     const handler = (e: Event) => {
       const target = e.target as Element | null;
       if (!target) return;
-      const el = target.closest<HTMLElement>("[data-track]");
+      // Match either the new attribute or the legacy one. Element with the
+      // new attribute won't have `[data-track]`, so we need both selectors.
+      const el = target.closest<HTMLElement>(
+        "[data-track-event],[data-track]",
+      );
       if (!el) return;
       const { eventName, trigger: t, once, data } = parseDataset(el);
       if (!eventName || t !== trigger) return;
