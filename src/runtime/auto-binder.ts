@@ -136,16 +136,27 @@ export function runTracking(config: RuntimeConfig): RuntimeHandle {
   // `spaPageViews` defaults true — every modern app is an SPA at this point.
   // Disable with explicit `spaPageViews: false` for static MPAs.
   const spaPageViews = config.spaPageViews !== false;
-  const onRouteChange = () => {
+
+  // Astro view-transitions fires `astro:page-load` on the FIRST load too, not
+  // only on navigations. The boot script already fired the initial PageView,
+  // so we must skip the first invocation of this handler — otherwise we'd
+  // emit two PageViews per initial load with different event_ids.
+  let astroLoadSeen = false;
+
+  const onRouteChange = (source: "astro" | "history") => {
     bindPerRoute();
-    if (spaPageViews) {
-      // first-load PageView fired by inline pixel script; only re-fire after
-      if (window.__META_FIRST_PAGEVIEW_DONE__) trackEvent("PageView");
+    if (!spaPageViews) return;
+    if (!window.__META_FIRST_PAGEVIEW_DONE__) return;
+    if (source === "astro" && !astroLoadSeen) {
+      astroLoadSeen = true;
+      return; // first astro:page-load == initial render; boot already fired PV
     }
+    trackEvent("PageView", undefined, { trigger: "route" });
   };
 
   // Astro view-transitions
-  document.addEventListener("astro:page-load", onRouteChange);
+  const onAstroPageLoad = () => onRouteChange("astro");
+  document.addEventListener("astro:page-load", onAstroPageLoad);
 
   // History API patch (works for Next App Router, React Router, etc)
   const origPush = history.pushState;
@@ -154,7 +165,7 @@ export function runTracking(config: RuntimeConfig): RuntimeHandle {
   const maybeFire = () => {
     if (location.pathname === lastPath) return;
     lastPath = location.pathname;
-    onRouteChange();
+    onRouteChange("history");
   };
   history.pushState = function (...args) {
     const r = origPush.apply(this, args);
@@ -173,7 +184,7 @@ export function runTracking(config: RuntimeConfig): RuntimeHandle {
     destroy: () => {
       persistentCleanups.forEach((fn) => fn());
       perRouteCleanups.forEach((fn) => fn());
-      document.removeEventListener("astro:page-load", onRouteChange);
+      document.removeEventListener("astro:page-load", onAstroPageLoad);
       history.pushState = origPush;
       history.replaceState = origReplace;
       window.__ZARA_RUNTIME_ACTIVE__ = false;
