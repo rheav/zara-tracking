@@ -137,54 +137,55 @@ export function runTracking(config: RuntimeConfig): RuntimeHandle {
   // Disable with explicit `spaPageViews: false` for static MPAs.
   const spaPageViews = config.spaPageViews !== false;
 
-  // Astro view-transitions fires `astro:page-load` on the FIRST load too, not
-  // only on navigations. The boot script already fired the initial PageView,
-  // so we must skip the first invocation of this handler — otherwise we'd
-  // emit two PageViews per initial load with different event_ids.
-  let astroLoadSeen = false;
+  // Track the pathname at which we last fired a PageView. The boot script
+  // already fired one for the initial pathname, so we seed the cache with
+  // it. Any "route change" event (astro:page-load, pushState, popstate) only
+  // results in a fire if the pathname *actually changed* — this is the only
+  // duplicate-PageView guard that survives every quirk:
+  //   - Astro view-transitions firing astro:page-load on initial render
+  //   - Astro firing it again after dev-server vite HMR reconnect
+  //   - Hash-only navigations (#anchor links) → no fire (pathname unchanged)
+  //   - Same-path replaceState calls → no fire
+  let lastFiredPath =
+    typeof location !== "undefined" ? location.pathname : "";
 
-  const onRouteChange = (source: "astro" | "history") => {
+  const onRouteChange = () => {
+    // Per-route bindings (visible / scroll / dwell / video / route triggers)
+    // re-bind even when pathname is unchanged so SPA-internal DOM swaps still
+    // get fresh observers. The once-guard inside dispatch handles dedup of
+    // the events themselves.
     bindPerRoute();
     if (!spaPageViews) return;
     if (!window.__META_FIRST_PAGEVIEW_DONE__) return;
-    if (source === "astro" && !astroLoadSeen) {
-      astroLoadSeen = true;
-      return; // first astro:page-load == initial render; boot already fired PV
-    }
+    if (location.pathname === lastFiredPath) return;
+    lastFiredPath = location.pathname;
     trackEvent("PageView", undefined, { trigger: "route" });
   };
 
   // Astro view-transitions
-  const onAstroPageLoad = () => onRouteChange("astro");
-  document.addEventListener("astro:page-load", onAstroPageLoad);
+  document.addEventListener("astro:page-load", onRouteChange);
 
   // History API patch (works for Next App Router, React Router, etc)
   const origPush = history.pushState;
   const origReplace = history.replaceState;
-  let lastPath = location.pathname;
-  const maybeFire = () => {
-    if (location.pathname === lastPath) return;
-    lastPath = location.pathname;
-    onRouteChange("history");
-  };
   history.pushState = function (...args) {
     const r = origPush.apply(this, args);
-    setTimeout(maybeFire, 0);
+    setTimeout(onRouteChange, 0);
     return r;
   };
   history.replaceState = function (...args) {
     const r = origReplace.apply(this, args);
-    setTimeout(maybeFire, 0);
+    setTimeout(onRouteChange, 0);
     return r;
   };
-  window.addEventListener("popstate", () => setTimeout(maybeFire, 0));
+  window.addEventListener("popstate", () => setTimeout(onRouteChange, 0));
 
   return {
     rebind: bindPerRoute,
     destroy: () => {
       persistentCleanups.forEach((fn) => fn());
       perRouteCleanups.forEach((fn) => fn());
-      document.removeEventListener("astro:page-load", onAstroPageLoad);
+      document.removeEventListener("astro:page-load", onRouteChange);
       history.pushState = origPush;
       history.replaceState = origReplace;
       window.__ZARA_RUNTIME_ACTIVE__ = false;
